@@ -1,15 +1,28 @@
-# Ducklink Food Finder
+# Agora
 
-Mac desktop app that scans Stevens Ducklink for events, uses OCR plus an LLM to identify free food, and surfaces the best results first.
+AI-powered campus event discovery from event pages, flyers, and student organization listings.
+
+Agora is a macOS desktop app that helps students discover relevant campus events by automatically scanning event listings, extracting flyer text with OCR, and using LLM-based classification to rank events by student-relevant attributes.
+
+## Problem
+
+Campus event platforms often contain dozens of listings with inconsistent descriptions, flyer-only details, and limited filtering. Students may miss useful opportunities because important information is buried in images, vague descriptions, or long event feeds.
+
+Agora treats campus event discovery as an information retrieval problem: collect the available listings, extract the details that matter, classify the signals students care about, and rank the events so useful opportunities are easier to evaluate.
+
+## Solution
+
+Agora automates campus event discovery by collecting current event listings, extracting text from both event metadata and promotional flyers, and applying AI classification to surface the events most likely to be relevant to students.
 
 ## What It Does
 
 - Signs into Ducklink through the embedded browser flow
-- Scrapes the current day's events from the Events tab
-- Runs OCR on flyers and posters attached to events
-- Uses NVIDIA NIM to classify whether an event likely has free food
-- Shows food events first, followed by the rest
-- Caches results and stores the API key securely on the machine
+- Scrapes current campus event listings from the Events tab
+- Downloads and processes attached event flyers and posters
+- Runs OCR on flyer images to recover details that are not present in structured event metadata
+- Uses NVIDIA NIM for LLM-based classification of student-relevant event attributes, currently focused on food and refreshments
+- Ranks classified events so high-value opportunities appear first
+- Caches scan results and stores the API key securely on the machine
 
 ## Tech Stack
 
@@ -24,7 +37,7 @@ Mac desktop app that scans Stevens Ducklink for events, uses OCR plus an LLM to 
 
 - macOS
 - Node.js and npm
-- A valid NVIDIA API key for food detection
+- A valid NVIDIA API key for AI classification
 
 ## Getting Started
 
@@ -53,36 +66,48 @@ On first launch, enter your NVIDIA API key in the app settings.
 
 1. Open the app and start a scan.
 2. Let the app load Ducklink and scrape the Events tab.
-3. Wait while OCR and food detection run.
-4. Review food events at the top of the results list.
+3. Wait while event metadata, flyer OCR, and AI classification run.
+4. Review the ranked event results, with refreshment-related events currently surfaced as a primary signal.
 
 ```text
-┌───────────┐    ┌──────────────────┐    ┌──────────────────────┐
-│ Start Scan │ -> │ Ducklink Events  │ -> │ Scrape event cards   │
-└───────────┘    │ tab              │    │ + images             │
-                 └──────────────────┘    └──────────┬───────────┘
-                                                     │
-                                       ┌─────────────┴─────────────┐
-                                       │                           │
-                          ┌──────────────────────┐    ┌──────────────────────┐
-                          │ Event text           │    │ Flyer image text     │
-                          │ name / time / loc    │    │ OCR with Tesseract   │
-                          └────────────┬─────────┘    └────────────┬─────────┘
-                                       │                           │
-                                       └─────────────┬─────────────┘
-                                                     │
-                                       ┌─────────────▼─────────────┐
-                                       │ Merge text + send to NIM  │
-                                       └─────────────┬─────────────┘
-                                                     │
-                                       ┌─────────────▼─────────────┐
-                                       │ Classify + sort results   │
-                                       └─────────────┬─────────────┘
-                                                     │
-                                           ┌─────────▼─────────┐
-                                           │ Display results   │
-                                           └───────────────────┘
+┌────────────┐   ┌──────────────────┐   ┌──────────────────────┐
+│ Start Scan │ ->│ Ducklink Events  │ ->│ Scrape event cards   │
+└────────────┘   │ tab              │   │ + attached images    │
+                 └──────────────────┘   └──────────┬───────────┘
+                                                    │
+                                      ┌─────────────┴─────────────┐
+                                      │                           │
+                         ┌──────────────────────┐    ┌──────────────────────┐
+                         │ Event metadata       │    │ Flyer/poster text    │
+                         │ name / time / loc    │    │ OCR with Tesseract   │
+                         └────────────┬─────────┘    └────────────┬─────────┘
+                                      │                           │
+                                      └─────────────┬─────────────┘
+                                                    │
+                                      ┌─────────────▼─────────────┐
+                                      │ Merge text + send to NIM  │
+                                      └─────────────┬─────────────┘
+                                                    │
+                                      ┌─────────────▼─────────────┐
+                                      │ Classify + rank results   │
+                                      └─────────────┬─────────────┘
+                                                    │
+                                          ┌─────────▼─────────┐
+                                          │ Display results   │
+                                          └───────────────────┘
 ```
+
+## Current Progress / Implementation
+
+Agora currently implements the core event intelligence pipeline: sign in through Ducklink, scrape campus event listings, collect attached flyer images, extract flyer text with OCR, classify events with NVIDIA NIM, rank the results, cache scan data, and store the API key securely.
+
+The current ranking signal focuses on events that mention food or refreshments. That is useful because many campus postings mention pizza, snacks, catered meals, or refreshments only inside flyer images or unstructured descriptions.
+
+## Future Goal / Vision
+
+Agora's longer-term vision is broader campus event intelligence: a student-focused discovery system that identifies relevant opportunities across inconsistent event listings, flyers, and organization posts.
+
+The architecture is intended to support additional event categories such as career events, club meetings, workshops, networking opportunities, and social activities, with food and refreshment detection becoming one ranking signal among many.
 
 ## Project Structure
 
@@ -93,7 +118,7 @@ On first launch, enter your NVIDIA API key in the app settings.
 
 ## Packaging
 
-The macOS build outputs a DMG via Electron Builder.
+The macOS build outputs both DMG and ZIP artifacts via Electron Builder.
 
 ## Auto Updates
 
@@ -103,7 +128,7 @@ The app now includes an in-app updater flow in Settings:
 - `Download Update` pulls the new release without requiring a manual reinstall
 - `Restart to Update` closes the app and installs the downloaded build
 
-This project is configured to use GitHub Releases from `shivenp14/ducklink-food-finder`.
+This project is configured to use GitHub Releases from `shivenp14/agora`.
 
 To publish an update:
 
