@@ -22,6 +22,7 @@ export interface ScrapedEvent {
   combinedText: string;
   hasFood: boolean;
   foodReasoning: string;
+  foodStatus?: 'provided' | 'not_provided' | 'uncertain' | 'unavailable';
   foodConfidence: number;
 }
 
@@ -78,6 +79,7 @@ export async function scrapeEvents(page: Page): Promise<ScrapedEvent[]> {
   }
 
   // Wait for content to fully render
+  await page.locator('#divAllItems').waitFor({ state: 'attached', timeout: 15000 });
   await page.waitForTimeout(5000);
   await scrollUntilTomorrowOrStable(page);
 

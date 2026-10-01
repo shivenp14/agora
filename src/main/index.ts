@@ -80,8 +80,11 @@ app.whenReady().then(async () => {
   }
 
   // Load API key from Keychain on startup
-  await loadApiKeyFromKeychain();
-  logger.info('API key loaded from Keychain');
+  try {
+    await loadApiKeyFromKeychain();
+  } catch {
+    logger.warn('Keychain unavailable; configure an API key in Settings.');
+  }
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window);

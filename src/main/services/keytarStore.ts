@@ -1,13 +1,13 @@
 import keytar from 'keytar';
 
 const SERVICE_NAME = 'ducklink-food-finder';
-const ACCOUNT_NAME = 'nvidia-api-key';
+const ACCOUNT_NAME = 'typesafe-api-key';
 
 const apiKeyCache: { key: string | null } = { key: null };
 
 export async function setApiKey(apiKey: string): Promise<void> {
-  apiKeyCache.key = apiKey;
   await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, apiKey);
+  apiKeyCache.key = apiKey;
 }
 
 export function getApiKey(): string | null {
@@ -19,8 +19,9 @@ export function hasApiKey(): boolean {
 }
 
 export async function deleteApiKey(): Promise<boolean> {
+  const deleted = await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
   apiKeyCache.key = null;
-  return keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+  return deleted;
 }
 
 export async function loadApiKeyFromKeychain(): Promise<string | null> {

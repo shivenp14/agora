@@ -39,3 +39,19 @@ pnpm-debug.log*
 # TypeScript / bundler caches
 *.tsbuildinfo
 .eslintcache
+
+# Installed agent workflow
+/AGENTS.md
+/.codex/config.toml
+/.codex/agents/explorer.toml
+/.codex/agents/implementer.toml
+/.codex/agents/reviewer.toml
+/.agents/skills/orchestrate/SKILL.md
+/.agents/skills/orchestrate/references/state-schema.md
+/.agents/skills/orchestrate/references/worker-contracts.md
+/.agents/skills/orchestrate/references/retry-policy.md
+/.agents/skills/review-change/SKILL.md
+/.agents/skills/verify-change/SKILL.md
+/docs/agent/architecture.md
+/docs/agent/testing.md
+/.agent-state/README.md

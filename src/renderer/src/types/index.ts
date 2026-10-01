@@ -27,6 +27,7 @@ export interface ScrapedEvent {
   combinedText: string
   hasFood: boolean
   foodReasoning: string
+  foodStatus?: 'provided' | 'not_provided' | 'uncertain' | 'unavailable';
   foodConfidence: number
   sourceUrl: string
 }

@@ -32,10 +32,14 @@ type ScanStage = 'idle' | 'browser' | 'scraping' | 'ocr' | 'llm' | 'done' | 'err
 let currentStage: ScanStage = 'idle';
 let mainWindow: BrowserWindow | null = null;
 let scanStartTime = 0;
+let scanRunning = false;
+let scanGeneration = 0;
 
 export function registerHandlers(window: BrowserWindow): void {
   mainWindow = window;
   initializeUpdater(window);
+  // macOS can recreate the window after its last window was closed.
+  for (const channel of Object.values(IPC)) ipcMain.removeHandler(channel);
 
   setUrlChangeCallback((url: string) => {
     mainWindow?.webContents.send(IPC.BROWSER_URL_CHANGED, url);
@@ -48,7 +52,7 @@ export function registerHandlers(window: BrowserWindow): void {
   // ─── Scan Lifecycle ───────────────────────────────────────
 
   ipcMain.handle(IPC.SCAN_START, async (_event, forceRefresh: boolean = false) => {
-    if (currentStage !== 'idle' && currentStage !== 'error' && currentStage !== 'done') {
+    if (scanRunning) {
       throw new Error('Scan already in progress');
     }
 
@@ -70,30 +74,44 @@ export function registerHandlers(window: BrowserWindow): void {
       }
     }
 
+    if (!hasApiKey()) {
+      throw new Error('TypeSafe API key not configured. Please set it in Settings.');
+    }
+
+    scanRunning = true;
+    const generation = ++scanGeneration;
     currentStage = 'browser';
     scanStartTime = Date.now();
     emitProgress('browser', 'Starting browser...', 10);
 
     try {
       await launchBrowser();
+      assertActiveScan(generation);
       await navigateToDucklink();
+      assertActiveScan(generation);
 
       currentStage = 'scraping';
       emitProgress('scraping', 'Navigating to Events...', 20);
       await navigateToEventsTab();
-      await runScraping();
+      assertActiveScan(generation);
+      await runScraping(generation);
     } catch (error) {
+      if (generation !== scanGeneration) return;
       const failedStage = currentStage;
       currentStage = 'error';
       const message = (error as Error).message;
       logger.error(`Scan failed at stage ${failedStage}: ${message}`);
       emitError(failedStage, message, 0, true);
       await closeBrowser();
+    } finally {
+      if (generation !== scanGeneration) await closeBrowser();
+      scanRunning = false;
     }
   });
 
   ipcMain.handle(IPC.SCAN_CANCEL, async () => {
     logger.info('Scan cancelled by user');
+    scanGeneration++;
     await closeBrowser();
     currentStage = 'idle';
     emitProgress('idle', 'Scan cancelled', 0);
@@ -105,8 +123,9 @@ export function registerHandlers(window: BrowserWindow): void {
     return getApiKey();
   });
 
-  ipcMain.handle(IPC.SETTINGS_SET_API_KEY, (_event, key: string) => {
-    setApiKey(key);
+  ipcMain.handle(IPC.SETTINGS_SET_API_KEY, async (_event, key: string) => {
+    if (typeof key !== 'string' || !key.trim()) throw new Error('API key cannot be empty.');
+    await setApiKey(key.trim());
     logger.info('API key saved to secure storage');
   });
 
@@ -114,8 +133,8 @@ export function registerHandlers(window: BrowserWindow): void {
     return hasApiKey();
   });
 
-  ipcMain.handle(IPC.SETTINGS_DELETE_API_KEY, () => {
-    deleteApiKey();
+  ipcMain.handle(IPC.SETTINGS_DELETE_API_KEY, async () => {
+    await deleteApiKey();
     logger.info('API key deleted from secure storage');
   });
 
@@ -179,7 +198,11 @@ export function registerHandlers(window: BrowserWindow): void {
 
 // ─── Scraping Orchestration ─────────────────────────────────
 
-async function runScraping(): Promise<void> {
+function assertActiveScan(generation: number): void {
+  if (generation !== scanGeneration) throw new Error('Scan cancelled');
+}
+
+async function runScraping(generation: number): Promise<void> {
   const page = getPage();
   if (!page) throw new Error('Browser page not available');
 
@@ -187,18 +210,20 @@ async function runScraping(): Promise<void> {
 
   // Scrape events with retry (3 attempts)
   const events = await retryWithBackoff(
-    () => scrapeEvents(page),
+    () => { assertActiveScan(generation); return scrapeEvents(page); },
     {
       maxRetries: 3,
       baseDelay: 2000,
       maxDelay: 10000,
       backoffMultiplier: 2,
       onRetry: (attempt, error) => {
+        assertActiveScan(generation);
         logger.warn(`Scraping retry ${attempt}: ${error.message}`);
         emitError('scraping', error.message, attempt, false);
       },
     }
   );
+  assertActiveScan(generation);
 
   if (events.length === 0) {
     logger.warn('No events found on page');
@@ -208,6 +233,7 @@ async function runScraping(): Promise<void> {
 
   // Download images
   const imagePaths = await downloadAllImages(events);
+  assertActiveScan(generation);
 
   const eventsWithImages: ScrapedEvent[] = events.map((e) => ({
     ...e,
@@ -222,9 +248,11 @@ async function runScraping(): Promise<void> {
   emitProgress('ocr', 'Running OCR on event images...', 40);
 
   const ocrTexts = await processAllImages(eventsWithImages, (current, total, eventName) => {
+    if (generation !== scanGeneration) return;
     const ocrProgress = 40 + Math.round((current / total) * 20);
     emitProgress('ocr', `Reading image ${current}/${total}: ${eventName}`, ocrProgress);
   });
+  assertActiveScan(generation);
 
   const eventsWithOCR: ScrapedEvent[] = eventsWithImages.map((event) => {
     const ocrText = ocrTexts.get(event.id) || '';
@@ -240,16 +268,18 @@ async function runScraping(): Promise<void> {
 
   // LLM food detection stage
   currentStage = 'llm';
-  emitProgress('llm', 'Detecting free food with AI...', 60);
+  emitProgress('llm', 'Checking food availability with TypeSafe Jev...', 60);
 
   if (!hasApiKey()) {
-    throw new Error('NVIDIA API key not configured. Please set it in Settings.');
+    throw new Error('TypeSafe API key not configured. Please set it in Settings.');
   }
 
   const classifiedEvents = await detectFood(eventsWithOCR, (currentBatch, totalBatches, eventsInBatch) => {
+    if (generation !== scanGeneration) return;
     const llmProgress = 60 + Math.round((currentBatch / totalBatches) * 30);
     emitProgress('llm', `Analyzing batch ${currentBatch}/${totalBatches} (${eventsInBatch} events)...`, llmProgress);
   });
+  assertActiveScan(generation);
 
   const sortedEvents = sortEventsByFood(classifiedEvents);
   const foodEvents = sortedEvents.filter((e) => e.hasFood);
@@ -257,11 +287,14 @@ async function runScraping(): Promise<void> {
   emitProgress('llm', 'Food detection complete', 90);
 
   await closeBrowser();
+  assertActiveScan(generation);
 
   const scanDuration = Date.now() - scanStartTime;
 
   // Cache results
-  saveCache(sortedEvents, foodEvents, scanDuration);
+  if (!sortedEvents.some((event) => event.foodReasoning === 'Food detection failed for this batch')) {
+    saveCache(sortedEvents, foodEvents, scanDuration);
+  }
 
   currentStage = 'done';
   emitScanComplete(sortedEvents, foodEvents, scanDuration, false);

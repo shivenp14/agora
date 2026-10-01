@@ -20,7 +20,7 @@ export default function HomeScreen({ onScan, onSettings }: Props) {
           <div>
             <h3 className="font-bold text-on-error-container text-sm sm:text-base">API Configuration Required</h3>
             <p className="text-sm text-on-error-container/80 mt-1 leading-relaxed">
-              Your NVIDIA API key is not yet configured. Live vision processing is currently disabled. Please visit <button onClick={onSettings} className="font-bold underline decoration-error/30 hover:decoration-error cursor-pointer">Settings</button> to resolve this.
+              Your TypeSafe API key is not yet configured. Jev food classification is currently disabled. Please visit <button onClick={onSettings} className="font-bold underline decoration-error/30 hover:decoration-error cursor-pointer">Settings</button> to resolve this.
             </p>
           </div>
         </div>

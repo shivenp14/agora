@@ -31,7 +31,7 @@ export async function launchBrowser(): Promise<void> {
 
   browser = await chromium.launch({
     headless: true,
-    executablePath: chromiumPath,
+    ...(chromiumPath ? { executablePath: chromiumPath } : { channel: 'chrome' }),
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
@@ -121,7 +121,7 @@ export function setScreenshotCallback(callback: (dataUrl: string) => void): void
   }
 }
 
-function getChromiumPath(): string {
+function getChromiumPath(): string | undefined {
   const bundledPath = path.join(process.resourcesPath, 'chromium', 'chromium');
 
   if (app.isPackaged) {
@@ -132,7 +132,12 @@ function getChromiumPath(): string {
     logger.warn(`Bundled Chromium not found at ${bundledPath}, falling back to Playwright browser cache`);
   }
 
-  return chromium.executablePath();
+  const cachedPath = chromium.executablePath();
+  if (existsSync(cachedPath)) return cachedPath;
+
+  // Use a fresh, isolated Chrome context; never reuse the user's profile.
+  logger.info('Playwright Chromium is missing; using installed Google Chrome');
+  return undefined;
 }
 
 function attachPageListeners(): void {

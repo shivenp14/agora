@@ -27,6 +27,7 @@ export default function ResultsScreen({
   onRefresh,
 }: Props) {
   const otherEvents = events.filter((e) => !e.hasFood)
+  const hasUncertainEvents = events.some((e) => e.foodStatus === 'uncertain')
   const hasPartialFailure = events.some(
     (e) => e.foodReasoning === 'Food detection failed for this batch'
   )
@@ -99,7 +100,7 @@ export default function ResultsScreen({
               <h3 className="font-headline font-bold opacity-80 text-sm uppercase">Free Food Detection</h3>
               <div className="text-5xl sm:text-6xl font-headline font-extrabold mt-2">{foodEvents.length.toString().padStart(2, '0')}</div>
               <p className="mt-4 text-sm font-medium leading-relaxed opacity-90">
-                Catering confirmed by vision AI and attendee metadata. Check the feed below.
+                Food identified from event descriptions and flyer text. Check the feed below.
               </p>
             </div>
             <div className="mt-6 flex items-center gap-2">
@@ -116,7 +117,7 @@ export default function ResultsScreen({
           <div className="bg-error-container/40 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 border-l-4 border-error">
             <span className="material-symbols-outlined text-error">warning</span>
             <p className="text-sm font-medium text-on-error-container">
-              <strong>Sensor Interference:</strong> Optical scan partial failure. Results may be incomplete for some zones.
+              <strong>AI classification incomplete:</strong> Some events could not be checked for food. Refresh to try again.
             </p>
             <button onClick={onRefresh} className="sm:ml-auto w-full sm:w-auto text-error text-xs font-bold uppercase tracking-wider cursor-pointer hover:underline text-left sm:text-right">Refresh Data</button>
           </div>
@@ -178,9 +179,11 @@ export default function ResultsScreen({
         ) : events.length > 0 && (
           <div className="bg-surface-container-low rounded-2xl p-8 sm:p-12 text-center">
             <span className="material-symbols-outlined text-6xl text-slate-300 mb-4 block">search_off</span>
-            <h3 className="text-xl sm:text-2xl font-headline font-bold text-on-surface mb-2">No Free Food Detected</h3>
+            <h3 className="text-xl sm:text-2xl font-headline font-bold text-on-surface mb-2">{hasUncertainEvents || hasPartialFailure ? 'No Free Food Confirmed' : 'No Free Food Detected'}</h3>
             <p className="text-on-surface-variant max-w-md mx-auto">
-              We scanned {events.length} events, but none of them appear to have catering or free food based on our analysis.
+              {hasUncertainEvents || hasPartialFailure
+                ? 'Some food checks are uncertain or unavailable. Review the original event listings or refresh the scan.'
+                : `We scanned ${events.length} events, but found no evidence of food provided to attendees.`}
             </p>
           </div>
         )}
@@ -210,7 +213,7 @@ export default function ResultsScreen({
                     <p className="text-xs text-on-surface-variant truncate">
                       {getEventTimeLabel(event) || 'Time TBA'}
                     </p>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase mt-2 block">No Food Detected</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase mt-2 block">{event.foodStatus === 'uncertain' ? 'Food availability uncertain' : event.foodReasoning === 'Food detection failed for this batch' ? 'Food check unavailable' : 'No Food Detected'}</span>
                   </div>
                   <button
                     type="button"

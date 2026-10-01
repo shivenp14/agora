@@ -42,8 +42,11 @@ export async function initWorkers(): Promise<Worker[]> {
     Array.from({ length: OCR_WORKER_COUNT }, (_, index) => createOcrWorker(index))
   );
 
-  workers = await workerInitPromise;
-  workerInitPromise = null;
+  try {
+    workers = await workerInitPromise;
+  } finally {
+    workerInitPromise = null;
+  }
 
   logger.info(`Initialized ${workers.length} Tesseract workers`);
   return workers;

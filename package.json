@@ -14,6 +14,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "lint": "eslint src --ext .ts,.tsx,.js,.jsx",
+    "test": "node --test tests/*.cjs",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",

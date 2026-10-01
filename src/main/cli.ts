@@ -139,7 +139,7 @@ async function runScan(): Promise<ScrapedEvent[]> {
   console.log('--- LLM food detection ---');
   if (!hasApiKey()) {
     console.log('No API key found. Set it via: npx electron-vite dev');
-    console.log('  Then go to Settings and save your NVIDIA API key');
+    console.log('  Then go to Settings and save your TypeSafe API key');
     console.log('  Or run: npm run cli -- --dry-run\n');
     await closeBrowser();
     return events;

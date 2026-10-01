@@ -15,7 +15,7 @@ const STAGES = [
   { key: 'browser', label: 'Launching browser', icon: 'language', desc: 'Headless instance initialized successfully.' },
   { key: 'scraping', label: 'Finding events', icon: 'search', desc: 'Upcoming events detected in portal.' },
   { key: 'ocr', label: 'Reading event flyers via OCR', icon: 'view_in_ar', desc: 'Extracting text from images...' },
-  { key: 'llm', label: 'LLM Food Detection', icon: 'psychology', desc: 'Queued for semantic analysis.' },
+  { key: 'llm', label: 'Jev Food Classification', icon: 'psychology', desc: 'Checking event text with TypeSafe Jev.' },
 ] as const
 
 export default function ScanningScreen({
@@ -30,8 +30,9 @@ export default function ScanningScreen({
   const [previewUrl, setPreviewUrl] = useState('');
 
   useEffect(() => {
-    window.api.onBrowserUrlChanged((url) => setCurrentUrl(url));
-    window.api.onBrowserPreviewUpdated((dataUrl) => setPreviewUrl(dataUrl));
+    const detachUrl = window.api.onBrowserUrlChanged((url) => setCurrentUrl(url));
+    const detachPreview = window.api.onBrowserPreviewUpdated((dataUrl) => setPreviewUrl(dataUrl));
+    return () => { detachUrl(); detachPreview(); };
   }, []);
 
   if (state === 'error' && error?.isFinal) {

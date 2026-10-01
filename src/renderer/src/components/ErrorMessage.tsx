@@ -29,7 +29,7 @@ const STAGE_ERRORS: Record<
   llm: {
     title: 'Food Detection Failed',
     icon: '🤖',
-    suggestion: 'Check your NVIDIA API key in Settings, or try again later.',
+    suggestion: 'Check your TypeSafe API key in Settings, or try again later.',
   },
 }
 

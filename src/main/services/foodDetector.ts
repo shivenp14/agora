@@ -13,6 +13,7 @@ const CONCURRENT_BATCHES = 3;
 interface FoodFields {
   hasFood: boolean;
   foodReasoning: string;
+  foodStatus?: 'provided' | 'not_provided' | 'uncertain' | 'unavailable';
   foodConfidence: number;
 }
 
@@ -44,14 +45,18 @@ export async function detectFood<T extends { id: string; name: string; descripti
         ...batch[r.index],
         hasFood: r.hasFood,
         foodReasoning: r.reasoning,
+        foodStatus: r.foodStatus,
         foodConfidence: r.confidence,
       }));
     } catch (error) {
+      failedBatches++;
+      lastFailure = error instanceof Error ? error.message : String(error);
       logger.error(`LLM batch ${batchIndex + 1} failed after retries: ${(error as Error).message}`);
       return batch.map((event) => ({
         ...event,
         hasFood: false,
         foodReasoning: 'Food detection failed for this batch',
+        foodStatus: 'unavailable' as const,
         foodConfidence: 0,
       }));
     }
@@ -59,6 +64,8 @@ export async function detectFood<T extends { id: string; name: string; descripti
 
   const running: Promise<void>[] = [];
   let currentBatchIndex = 0;
+  let failedBatches = 0;
+  let lastFailure = 'AI service unavailable';
 
   const runNextBatch = async (): Promise<void> => {
     while (currentBatchIndex < batches.length) {
@@ -82,6 +89,10 @@ export async function detectFood<T extends { id: string; name: string; descripti
   }
 
   await Promise.all(running);
+
+  if (failedBatches === batches.length) {
+    throw new Error(`Food detection failed for all events: ${lastFailure}`);
+  }
 
   const foodCount = results.filter((e) => e.hasFood).length;
   logger.info(`Classification complete: ${foodCount}/${results.length} events have food`);

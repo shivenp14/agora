@@ -1,9 +1,11 @@
+import { CLASSIFIER_VERSION } from './llm';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { getLocalDateKey } from '../../shared/date';
 
 interface CacheData {
+  classifierVersion: string;
   date: string;
   timestamp: number;
   events: unknown[];
@@ -24,6 +26,7 @@ function loadCache(): CacheData | null {
     if (!fs.existsSync(CACHE_PATH)) return null;
     const data = fs.readFileSync(CACHE_PATH, 'utf-8');
     const parsed = JSON.parse(data) as CacheData;
+    if (parsed.classifierVersion !== CLASSIFIER_VERSION) return null;
     return {
       ...parsed,
       events: sanitizeCachedEvents(parsed.events),
@@ -89,6 +92,7 @@ export function saveCache(
   const today = getLocalDateKey();
 
   const data: CacheData = {
+    classifierVersion: CLASSIFIER_VERSION,
     date: today,
     timestamp: Date.now(),
     events,

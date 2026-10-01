@@ -3,6 +3,8 @@ import { is } from '@electron-toolkit/utils';
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater';
 import { IPC } from '../ipc/channels';
 import { logger } from '../utils/logger';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 export type UpdateStatus =
   | 'disabled'
@@ -46,7 +48,7 @@ let state: UpdateState = {
 };
 
 export function isUpdateConfigured(): boolean {
-  return app.isPackaged;
+  return app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml'));
 }
 
 export function initializeUpdater(window: BrowserWindow): void {
@@ -171,12 +173,14 @@ function createInitialState(): UpdateState {
     lastCheckedAt: null,
   };
 
-  if (is.dev) {
+  if (is.dev || !isUpdateConfigured()) {
     return {
       ...baseState,
       enabled: false,
       status: 'disabled',
-      message: 'Auto-updates are disabled while running in development.',
+      message: is.dev
+        ? 'Auto-updates are disabled while running in development.'
+        : 'Updates are unavailable in this local build. Install a DMG or ZIP release to enable updates.',
     };
   }
 

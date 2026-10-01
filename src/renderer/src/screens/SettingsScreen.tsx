@@ -30,16 +30,19 @@ export default function SettingsScreen({ onBack }: Props) {
   const [apiKey, setApiKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [cacheInfo, setCacheInfo] = useState<CacheInfo | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo>(DEFAULT_APP_INFO);
   const [updateState, setUpdateState] = useState<UpdateState>(DEFAULT_UPDATE_STATE);
   const [updateBusy, setUpdateBusy] = useState(false);
 
   useEffect(() => {
-    window.api.hasApiKey().then(setHasKey);
-    window.api.getCacheInfo().then(setCacheInfo);
-    window.api.getAppInfo().then(setAppInfo);
-    window.api.getUpdateState().then(setUpdateState);
+    const reportLoadError = () => setSettingsError('Some settings could not be loaded. Reopen Settings to try again.');
+    window.api.hasApiKey().then(setHasKey).catch(reportLoadError);
+    window.api.getCacheInfo().then(setCacheInfo).catch(reportLoadError);
+    window.api.getAppInfo().then(setAppInfo).catch(reportLoadError);
+    window.api.getUpdateState().then(setUpdateState).catch(reportLoadError);
 
     const detachUpdateListener = window.api.onUpdateStateChanged((nextState) => {
       setUpdateState(nextState);
@@ -53,11 +56,19 @@ export default function SettingsScreen({ onBack }: Props) {
 
   const handleSave = async () => {
     if (!apiKey.trim()) return;
-    await window.api.setApiKey(apiKey.trim());
-    setHasKey(true);
-    setApiKey('');
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setSaving(true);
+    setSaved(false);
+    setSettingsError('');
+    try {
+      await window.api.setApiKey(apiKey.trim());
+      setHasKey(true);
+      setApiKey('');
+      setSaved(true);
+    } catch {
+      setSettingsError('Unable to save the API key to Keychain. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleClearCache = async () => {
@@ -136,22 +147,26 @@ export default function SettingsScreen({ onBack }: Props) {
               <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                 <span className="material-symbols-outlined">key</span>
               </div>
-              <h2 className="text-lg sm:text-xl font-bold text-on-background">Vision Model Authentication</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-on-background">TypeSafe Jev Authentication</h2>
             </div>
 
             <div className="space-y-5 sm:space-y-6">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-on-surface-variant flex flex-col sm:flex-row sm:justify-between gap-1" htmlFor="nvidia-api">
-                  NVIDIA API Key
+                <label className="text-sm font-semibold text-on-surface-variant flex flex-col sm:flex-row sm:justify-between gap-1" htmlFor="typesafe-api">
+                  TypeSafe API Key
                   <span className="text-xs font-normal opacity-60">Required for food identification</span>
                 </label>
+                <p className="text-xs text-on-surface-variant">
+                  Model: Jev 1.13. Get a key from{' '}
+                  <button type="button" onClick={() => void window.api.openExternal('https://console.typesafe.ai')} className="text-primary underline cursor-pointer">TypeSafe Console</button>.
+                </p>
                 <div className="relative">
                   <input
-                    id="nvidia-api"
+                    id="typesafe-api"
                     type="password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    placeholder={hasKey ? 'nvapi-xxxxxxxxxxxxxxxxxxxxxxxx (Saved)' : 'nvapi-xxxxxxxxxxxxxxxxxxxxxxxx'}
+                    placeholder={hasKey ? 'TypeSafe API key (Saved)' : 'Paste your TypeSafe API key'}
                     className="w-full bg-surface-container-highest border-0 border-b-2 border-primary/20 focus:border-primary focus:ring-0 rounded-t-lg px-4 py-4 font-mono text-sm transition-all"
                   />
                 </div>
@@ -174,10 +189,10 @@ export default function SettingsScreen({ onBack }: Props) {
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={handleSave}
-                  disabled={!apiKey.trim()}
+                  disabled={saving || !apiKey.trim()}
                   className="w-full sm:w-auto px-6 py-3 bg-primary text-on-primary font-bold rounded-full hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer"
                 >
-                  Save API Key
+                  {saving ? 'Saving...' : 'Save API Key'}
                 </button>
                 {saved && (
                   <div className="flex items-center gap-2 text-sm font-medium text-tertiary">
@@ -186,6 +201,7 @@ export default function SettingsScreen({ onBack }: Props) {
                   </div>
                 )}
               </div>
+              {settingsError && <p role="alert" className="text-sm text-error">{settingsError}</p>}
             </div>
           </div>
 
@@ -271,7 +287,7 @@ export default function SettingsScreen({ onBack }: Props) {
                 className="w-full sm:w-auto px-6 py-3 text-error font-bold rounded-full hover:bg-error/5 transition-colors flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-lg">delete_sweep</span>
-                Clear All Data
+                Clear Scan Cache
               </button>
             </div>
           </div>

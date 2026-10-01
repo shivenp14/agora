@@ -44,6 +44,8 @@ export function useScan() {
       await window.api.startScan(forceRefresh);
     } catch (err) {
       console.error('Start scan error:', err);
+      setError({ stage: 'browser', message: err instanceof Error ? err.message : 'Unable to start scan.', retryAttempt: 0, isFinal: true });
+      setState('error');
     }
   }, []);
 

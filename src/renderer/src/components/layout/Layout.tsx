@@ -6,7 +6,7 @@ interface LayoutProps {
   onNavigate: (screen: 'home' | 'scanning' | 'results' | 'settings') => void
 }
 
-export default function Layout({ children, currentScreen, onNavigate }: LayoutProps) {
+export default function Layout({ children, currentScreen }: LayoutProps) {
   const scrollRef = useRef<HTMLElement | null>(null)
   const hideTimerRef = useRef<number | null>(null)
   const [isScrolling, setIsScrolling] = useState(false)
@@ -72,6 +72,11 @@ export default function Layout({ children, currentScreen, onNavigate }: LayoutPr
       }
     }
   }, [])
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+    updateScrollbar()
+  }, [currentScreen])
 
   return (
     <div className="app-shell relative h-screen overflow-hidden bg-surface font-body text-on-surface">

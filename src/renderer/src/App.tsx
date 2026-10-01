@@ -13,20 +13,24 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const scan = useScan()
+  const hydrateResult = scan.hydrateResult
 
   useEffect(() => {
     let active = true
 
     const restoreCachedScan = async () => {
-      const cached = await window.api.getCachedScan()
-      if (!active) return
-
-      if (cached) {
-        scan.hydrateResult(cached)
-        setScreen('results')
+      try {
+        const cached = await window.api.getCachedScan()
+        if (!active) return
+        if (cached) {
+          hydrateResult(cached)
+          setScreen('results')
+        }
+      } catch (error) {
+        console.error('Failed to restore cached scan:', error)
+      } finally {
+        if (active) setIsBootstrapping(false)
       }
-
-      setIsBootstrapping(false)
     }
 
     void restoreCachedScan()
@@ -34,7 +38,7 @@ export default function App() {
     return () => {
       active = false
     }
-  }, [scan.hydrateResult])
+  }, [hydrateResult])
 
   useEffect(() => {
     if (isBootstrapping) return

@@ -1,3 +1,4 @@
+import { CLASSIFIER_VERSION } from './llm';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
@@ -5,6 +6,7 @@ import { logger } from '../utils/logger';
 import { getLocalDateKey } from '../../shared/date';
 
 interface CacheData {
+  classifierVersion: string;
   date: string;
   timestamp: number;
   events: unknown[];
@@ -27,6 +29,7 @@ function loadCache(): CacheData | null {
     if (!fs.existsSync(filePath)) return null;
     const data = fs.readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(data) as CacheData;
+    if (parsed.classifierVersion !== CLASSIFIER_VERSION) return null;
     return {
       ...parsed,
       events: sanitizeCachedEvents(parsed.events),
@@ -81,6 +84,10 @@ function saveCacheToFile(data: CacheData): void {
 export function getCachedScan(): CacheData | null {
   const cached = loadCache();
   if (!cached) return null;
+  if (cached.events.some((event) => event && typeof event === 'object' &&
+    'foodReasoning' in event && event.foodReasoning === 'Food detection failed for this batch')) {
+    return null;
+  }
 
   const today = getLocalDateKey();
   if (cached.date !== today) {
@@ -101,6 +108,7 @@ export function saveCache(
   const today = getLocalDateKey();
 
   const data: CacheData = {
+    classifierVersion: CLASSIFIER_VERSION,
     date: today,
     timestamp: Date.now(),
     events,
