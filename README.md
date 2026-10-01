@@ -97,7 +97,8 @@ Results marked uncertain or food-provided below 50% confidence appear in **Needs
                                       └─────────────┬─────────────┘
                                                     │
                                       ┌─────────────▼─────────────┐
-                                      │ Merge text + send to NIM  │
+                                      │ Merge text + send to      │
+                                      │ TypeSafe Jev              │
                                       └─────────────┬─────────────┘
                                                     │
                                       ┌─────────────▼─────────────┐
@@ -120,6 +121,8 @@ The current ranking signal focuses on events that mention food or refreshments. 
 Agora's longer-term vision is broader campus event intelligence: a student-focused discovery system that identifies relevant opportunities across inconsistent event listings, flyers, and organization posts.
 
 The architecture is intended to support additional event categories such as career events, club meetings, workshops, networking opportunities, and social activities, with food and refreshment detection becoming one ranking signal among many.
+
+See the [vision implementation plan](docs/VISION_IMPLEMENTATION_PLAN.md) for proposed milestones, dependencies, and completion criteria.
 
 ## Project Structure
 
