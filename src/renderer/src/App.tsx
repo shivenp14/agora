@@ -161,6 +161,8 @@ export default function App() {
           events={scan.events}
           foodEvents={scan.foodEvents}
           fromCache={scan.fromCache}
+          scanDate={scan.scanDate}
+          captureTimestamp={scan.captureTimestamp}
           onSettings={() => setScreen('settings')}
           onRefresh={() => {
             beginScan(true)

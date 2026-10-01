@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../main/ipc/channels';
 import type { ScrapedEvent } from '../renderer/src/types';
+import type { EventReview, ReviewDraft } from '../shared/eventReview';
 
 interface ScanProgressData {
   stage: string;
@@ -10,6 +11,7 @@ interface ScanProgressData {
 
 interface ScanResultData {
   date: string;
+  captureTimestamp: number;
   events: ScrapedEvent[];
   foodEvents: ScrapedEvent[];
   scanDuration: number;
@@ -60,6 +62,15 @@ contextBridge.exposeInMainWorld('api', {
   clearCache: () => ipcRenderer.invoke(IPC.CACHE_CLEAR),
   getCacheInfo: () => ipcRenderer.invoke(IPC.CACHE_INFO),
   getCachedScan: () => ipcRenderer.invoke(IPC.CACHE_GET),
+
+  // Food reviews
+  getReviewsForScan: (scanDate: string, captureTimestamp: number) => ipcRenderer.invoke(IPC.REVIEWS_GET_FOR_SCAN, scanDate, captureTimestamp),
+  saveEventReview: (draft: ReviewDraft) => ipcRenderer.invoke(IPC.REVIEWS_SAVE, draft) as Promise<EventReview>,
+  exportEventReviews: () => ipcRenderer.invoke(IPC.REVIEWS_EXPORT) as Promise<{
+    filePath: string;
+    reviewCount: number;
+    unresolvedCount: number;
+  } | null>,
 
   // App
   getAppInfo: () => ipcRenderer.invoke(IPC.APP_INFO),

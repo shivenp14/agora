@@ -1,4 +1,8 @@
+import { useEffect, useMemo, useState } from 'react'
 import { ScrapedEvent } from '../types'
+import type { EventReview } from '../../../shared/eventReview'
+import { getEventReviewKey } from '../../../shared/eventReview'
+import EventReviewControls from '../components/EventReviewControls'
 
 const TIME_VALUE_PATTERN = String.raw`(?<![:\d])\d{1,2}(?::\d{2})?\s*[AP]M`
 const TIME_SUFFIX_PATTERN = String.raw`(?:\s+[A-Z]{2,5}(?:\s*\(GMT[+-]\d{1,2}\))?)?`
@@ -15,6 +19,8 @@ interface Props {
   events: ScrapedEvent[]
   foodEvents: ScrapedEvent[]
   fromCache: boolean
+  scanDate: string
+  captureTimestamp: number
   onSettings: () => void
   onRefresh: () => void
 }
@@ -23,31 +29,69 @@ export default function ResultsScreen({
   events,
   foodEvents,
   fromCache,
+  scanDate,
+  captureTimestamp,
   onSettings,
   onRefresh,
 }: Props) {
-  const otherEvents = events.filter((e) => !e.hasFood)
-  const hasUncertainEvents = events.some((e) => e.foodStatus === 'uncertain')
+  const reviewableEvents = useMemo(() => events.filter((event) =>
+    event.foodStatus === 'uncertain' || (event.hasFood && (event.foodConfidence ?? 0) < 0.5)
+  ), [events])
+  const reviewableKeys = new Set(reviewableEvents.map((event) => getEventReviewKey(scanDate, event.sourceUrl)))
+  const positiveEvents = events.filter((event) => event.hasFood && !reviewableKeys.has(getEventReviewKey(scanDate, event.sourceUrl)))
+  const otherEvents = events.filter((event) =>
+    !event.hasFood && !reviewableKeys.has(getEventReviewKey(scanDate, event.sourceUrl))
+  )
+  const hasUncertainEvents = reviewableEvents.length > 0
   const hasPartialFailure = events.some(
     (e) => e.foodReasoning === 'Food detection failed for this batch'
   )
-  const averageFoodConfidence = foodEvents.length
-    ? foodEvents.reduce((sum, event) => sum + (event.foodConfidence ?? 0), 0) / foodEvents.length
-    : 0
-
-  const getCertaintyLabel = (confidence: number): string => {
-    if (confidence >= 0.8) return 'High Certainty'
-    if (confidence >= 0.5) return 'Medium Certainty'
-    return 'Low Certainty'
-  }
-
-  const getCertaintyTone = (confidence: number): string => {
-    if (confidence >= 0.8) return 'bg-tertiary-container text-on-tertiary-container'
-    if (confidence >= 0.5) return 'bg-secondary-container text-on-secondary-container'
-    return 'bg-surface-container-high text-on-surface-variant'
-  }
-
   const formatConfidence = (confidence: number): string => `${Math.round(confidence * 100)}%`
+
+  const [reviews, setReviews] = useState<Map<string, { review: EventReview | null; stale: boolean }>>(new Map())
+  const [reviewLoadError, setReviewLoadError] = useState('')
+  const [exportError, setExportError] = useState('')
+  const [exportMessage, setExportMessage] = useState('')
+  const [exporting, setExporting] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setReviews(new Map())
+    setReviewLoadError('')
+    if (!scanDate || captureTimestamp <= 0) {
+      setReviewLoadError('This result set has no saved scan snapshot. Run a fresh scan before reviewing events.')
+      return () => { active = false }
+    }
+    void window.api.getReviewsForScan(scanDate, captureTimestamp).then((result) => {
+      if (!active || result.scanDate !== scanDate || result.captureTimestamp !== captureTimestamp) return
+      setReviews(new Map(result.reviews.map((item) => [
+        getEventReviewKey(scanDate, item.sourceUrl),
+        { review: item.review, stale: item.stale },
+      ])))
+    }).catch((error) => {
+      if (active) setReviewLoadError(error instanceof Error ? error.message : 'Saved reviews could not be loaded. Try reopening these results.')
+    })
+    return () => { active = false }
+  }, [scanDate, captureTimestamp, events])
+
+  const handleReviewSaved = (event: ScrapedEvent, review: EventReview) => {
+    const key = getEventReviewKey(scanDate, event.sourceUrl)
+    setReviews((current) => new Map(current).set(key, { review, stale: false }))
+  }
+
+  const exportReviews = async () => {
+    setExporting(true)
+    setExportError('')
+    setExportMessage('')
+    try {
+      const result = await window.api.exportEventReviews()
+      if (result) setExportMessage(`Exported ${result.reviewCount} saved reviews and ${result.unresolvedCount} unresolved events.`)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'The review dataset could not be exported. Try another save location.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const openEvent = (url: string) => {
     if (!url) return
@@ -62,7 +106,7 @@ export default function ResultsScreen({
             <span className="text-primary font-headline font-bold uppercase tracking-widest text-xs">Scan Results</span>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-headline font-extrabold tracking-tight mt-2">Campus Feed Updated</h1>
             <p className="text-on-surface-variant mt-2 text-sm sm:text-base lg:text-lg max-w-2xl leading-relaxed">
-              We've identified {events.length} active events across the Hoboken campus. {getCertaintyLabel(averageFoodConfidence).toLowerCase()} confidence of catering detected at {foodEvents.length} locations.
+              Jev marked food as provided at {foodEvents.length} events. {reviewableEvents.length} {reviewableEvents.length === 1 ? 'event needs' : 'events need'} confirmation.
               {fromCache && ' (Loaded from cache)'}
             </p>
           </div>
@@ -81,8 +125,20 @@ export default function ResultsScreen({
             >
               Refresh Data
             </button>
+            <button
+              onClick={() => void exportReviews()}
+              disabled={exporting || events.length === 0}
+              className="w-full sm:w-auto px-5 py-3 bg-surface-container-highest text-on-surface font-headline font-bold rounded-full hover:bg-surface-dim transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exporting ? 'Exporting…' : 'Export review dataset'}
+            </button>
           </div>
         </div>
+        {(exportError || exportMessage) && (
+          <p role={exportError ? 'alert' : 'status'} className={`mt-3 text-sm ${exportError ? 'text-error' : 'text-primary'}`}>
+            {exportError || exportMessage}
+          </p>
+        )}
 
         {/* Bento Dashboard Summary */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mt-8 sm:mt-10">
@@ -97,15 +153,15 @@ export default function ResultsScreen({
           
           <div className="bg-primary bg-gradient-to-br from-primary to-primary-container p-6 sm:p-8 rounded-2xl text-white flex flex-col justify-between shadow-lg">
             <div>
-              <h3 className="font-headline font-bold opacity-80 text-sm uppercase">Free Food Detection</h3>
+              <h3 className="font-headline font-bold opacity-80 text-sm uppercase">Jev marked provided</h3>
               <div className="text-5xl sm:text-6xl font-headline font-extrabold mt-2">{foodEvents.length.toString().padStart(2, '0')}</div>
               <p className="mt-4 text-sm font-medium leading-relaxed opacity-90">
-                Food identified from event descriptions and flyer text. Check the feed below.
+                Model results use event descriptions and flyer text. Review uncertain listings below.
               </p>
             </div>
             <div className="mt-6 flex items-center gap-2">
               <span className="material-symbols-outlined text-white">restaurant</span>
-              <span className="text-sm font-bold uppercase">Food Detected</span>
+              <span className="text-sm font-bold uppercase">Model results</span>
             </div>
           </div>
         </div>
@@ -124,17 +180,23 @@ export default function ResultsScreen({
         </section>
       )}
 
+      {reviewLoadError && (
+        <p role="alert" className="mb-5 rounded-xl bg-error-container/40 px-4 py-3 text-sm text-on-error-container">
+          Saved reviews could not be loaded: {reviewLoadError}
+        </p>
+      )}
+
       {/* Events List */}
       <section className="max-w-6xl mx-auto grid grid-cols-1 gap-12">
         {/* Free Food Category */}
-        {foodEvents.length > 0 ? (
+        {positiveEvents.length > 0 ? (
           <div>
             <div className="flex items-center gap-4 mb-6">
-              <h2 className="text-xl sm:text-2xl font-headline font-extrabold">Free Food Detected</h2>
+              <h2 className="text-xl sm:text-2xl font-headline font-extrabold">Jev marked food provided</h2>
               <div className="h-[2px] flex-grow bg-surface-container-high"></div>
             </div>
             <div className="space-y-4 sm:space-y-6">
-              {foodEvents.map((event) => (
+              {positiveEvents.map((event) => (
                 <div key={event.id} className="group flex flex-col md:flex-row bg-surface-container-lowest rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-300 border border-surface-container-highest/30">
                   <div className="w-full md:w-64 h-44 sm:h-48 md:h-auto overflow-hidden bg-surface-container-low flex-shrink-0 relative">
                     {getEventImageSrc(event) ? (
@@ -148,8 +210,8 @@ export default function ResultsScreen({
                   <div className="flex-grow p-5 sm:p-8 flex flex-col justify-between gap-4">
                     <div>
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
-                        <span className={`${getCertaintyTone(event.foodConfidence ?? 0)} px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-2 w-fit`}>
-                          <span>{getCertaintyLabel(event.foodConfidence ?? 0)}</span>
+                        <span className="bg-tertiary-container text-on-tertiary-container px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-2 w-fit">
+                          <span>Model confidence</span>
                           <span className="opacity-70 normal-case tracking-normal font-semibold">{formatConfidence(event.foodConfidence ?? 0)}</span>
                         </span>
                         <div className="text-left sm:text-right text-on-surface-variant font-headline font-bold text-sm">
@@ -158,7 +220,7 @@ export default function ResultsScreen({
                         </div>
                       </div>
                       <h3 className="text-xl sm:text-2xl font-headline font-bold text-on-surface group-hover:text-primary transition-colors">{event.name}</h3>
-                      <p className="mt-3 sm:mt-4 text-slate-600 line-clamp-2">{event.foodReasoning || 'Food confirmed by visual analysis.'}</p>
+                      <p className="mt-3 sm:mt-4 text-slate-600 line-clamp-2">{event.foodReasoning || 'Jev marked food as provided. Check the event listing for details.'}</p>
                     </div>
                     <div className="mt-2 flex justify-center sm:justify-end items-end">
                       <button
@@ -171,12 +233,21 @@ export default function ResultsScreen({
                         Open on Ducklink
                       </button>
                     </div>
+                    <EventReviewControls
+                      key={`${getEventReviewKey(scanDate, event.sourceUrl)}:${reviews.get(getEventReviewKey(scanDate, event.sourceUrl))?.review?.reviewedAt ?? 'new'}`}
+                      event={event}
+                      scanDate={scanDate}
+                      captureTimestamp={captureTimestamp}
+                      review={reviews.get(getEventReviewKey(scanDate, event.sourceUrl))?.review ?? null}
+                      stale={reviews.get(getEventReviewKey(scanDate, event.sourceUrl))?.stale ?? false}
+                      onSaved={(review) => handleReviewSaved(event, review)}
+                    />
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        ) : events.length > 0 && (
+        ) : positiveEvents.length === 0 && reviewableEvents.length === 0 && events.length > 0 && (
           <div className="bg-surface-container-low rounded-2xl p-8 sm:p-12 text-center">
             <span className="material-symbols-outlined text-6xl text-slate-300 mb-4 block">search_off</span>
             <h3 className="text-xl sm:text-2xl font-headline font-bold text-on-surface mb-2">{hasUncertainEvents || hasPartialFailure ? 'No Free Food Confirmed' : 'No Free Food Detected'}</h3>
@@ -185,6 +256,54 @@ export default function ResultsScreen({
                 ? 'Some food checks are uncertain or unavailable. Review the original event listings or refresh the scan.'
                 : `We scanned ${events.length} events, but found no evidence of food provided to attendees.`}
             </p>
+          </div>
+        )}
+
+        {reviewableEvents.length > 0 && (
+          <div>
+            <div className="mb-2 flex items-center gap-4">
+              <h2 className="text-xl sm:text-2xl font-headline font-extrabold">Needs confirmation</h2>
+              <div className="h-[2px] flex-grow bg-surface-container-high"></div>
+            </div>
+            <p className="mb-5 text-sm leading-relaxed text-on-surface-variant">
+              These results are uncertain or below 50% model confidence. Check the captured listing and flyer before relying on them.
+            </p>
+            <div className="space-y-4">
+              {reviewableEvents.map((event) => {
+                const key = getEventReviewKey(scanDate, event.sourceUrl)
+                const savedReview = reviews.get(key)
+                return (
+                  <article key={key} className="rounded-2xl border border-surface-container-highest/40 bg-surface-container-lowest p-5 sm:p-6">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-secondary-container px-3 py-1 text-[10px] font-black uppercase tracking-widest text-on-secondary-container">
+                            {event.foodStatus === 'uncertain' ? 'Model says uncertain' : `Low confidence · ${formatConfidence(event.foodConfidence ?? 0)}`}
+                          </span>
+                          {savedReview?.review && <span className="text-xs font-semibold text-primary">Manual label: {labelsFor(savedReview.review.label)}</span>}
+                        </div>
+                        <h3 className="mt-2 text-lg font-headline font-bold text-on-surface">{event.name}</h3>
+                        <p className="mt-1 text-sm text-on-surface-variant">{event.foodReasoning || 'Jev could not determine whether food is provided.'}</p>
+                        <p className="mt-1 text-xs text-on-surface-variant">{getEventDateLabel(event) || 'Date TBA'}{getEventTimeLabel(event) ? ` · ${getEventTimeLabel(event)}` : ''}</p>
+                      </div>
+                      <button type="button" onClick={() => openEvent(event.sourceUrl)} disabled={!event.sourceUrl} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-surface-container-high px-4 text-sm font-bold text-primary hover:bg-surface-dim disabled:opacity-50">
+                        Open listing
+                      </button>
+                    </div>
+                    <EventReviewControls
+                      key={`${key}:${savedReview?.review?.reviewedAt ?? 'new'}`}
+                      event={event}
+                      scanDate={scanDate}
+                      captureTimestamp={captureTimestamp}
+                      review={savedReview?.review ?? null}
+                      stale={savedReview?.stale ?? false}
+                      onSaved={(review) => handleReviewSaved(event, review)}
+                      defaultOpen
+                    />
+                  </article>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -197,33 +316,41 @@ export default function ResultsScreen({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {otherEvents.map((event) => (
-                <div key={event.id} className="bg-surface-container-low hover:bg-surface-dim transition-colors p-5 sm:p-6 rounded-2xl flex items-center gap-4 sm:gap-6">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-surface-container-highest flex items-center justify-center text-slate-400 flex-shrink-0 overflow-hidden">
-                    {getEventImageSrc(event) ? (
-                      <img src={getEventImageSrc(event)!} alt={event.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="material-symbols-outlined text-3xl">event_busy</span>
-                    )}
+                <article key={event.id} className="bg-surface-container-low p-5 sm:p-6 rounded-2xl">
+                  <div className="flex items-center gap-4 sm:gap-6">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-surface-container-highest flex items-center justify-center text-slate-400 flex-shrink-0 overflow-hidden">
+                      {getEventImageSrc(event) ? (
+                        <img src={getEventImageSrc(event)!} alt={event.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="material-symbols-outlined text-3xl">event_busy</span>
+                      )}
+                    </div>
+                    <div className="flex-grow min-w-0">
+                      <h4 className="font-headline font-bold text-on-surface truncate text-sm sm:text-base">{event.name}</h4>
+                      <p className="text-xs text-on-surface-variant truncate">{getEventDateLabel(event) || 'Date TBA'}</p>
+                      <p className="text-xs text-on-surface-variant truncate">{getEventTimeLabel(event) || 'Time TBA'}</p>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase mt-2 block">{event.foodStatus === 'uncertain' ? 'Food availability uncertain' : event.foodReasoning === 'Food detection failed for this batch' ? 'Food check unavailable' : 'Jev found no evidence of food provided'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openEvent(event.sourceUrl)}
+                      disabled={!event.sourceUrl}
+                      aria-label={`Open ${event.name} on Ducklink`}
+                      className="inline-flex items-center justify-center gap-1 text-slate-400 hover:text-primary flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="material-symbols-outlined">open_in_new</span>
+                    </button>
                   </div>
-                  <div className="flex-grow min-w-0">
-                    <h4 className="font-headline font-bold text-on-surface truncate text-sm sm:text-base">{event.name}</h4>
-                    <p className="text-xs text-on-surface-variant truncate">
-                      {getEventDateLabel(event) || 'Date TBA'}
-                    </p>
-                    <p className="text-xs text-on-surface-variant truncate">
-                      {getEventTimeLabel(event) || 'Time TBA'}
-                    </p>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase mt-2 block">{event.foodStatus === 'uncertain' ? 'Food availability uncertain' : event.foodReasoning === 'Food detection failed for this batch' ? 'Food check unavailable' : 'No Food Detected'}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => openEvent(event.sourceUrl)}
-                    disabled={!event.sourceUrl}
-                    className="inline-flex items-center justify-center gap-1 text-slate-400 hover:text-primary flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <span className="material-symbols-outlined">open_in_new</span>
-                  </button>
-                </div>
+                  <EventReviewControls
+                    key={`${getEventReviewKey(scanDate, event.sourceUrl)}:${reviews.get(getEventReviewKey(scanDate, event.sourceUrl))?.review?.reviewedAt ?? 'new'}`}
+                    event={event}
+                    scanDate={scanDate}
+                    captureTimestamp={captureTimestamp}
+                    review={reviews.get(getEventReviewKey(scanDate, event.sourceUrl))?.review ?? null}
+                    stale={reviews.get(getEventReviewKey(scanDate, event.sourceUrl))?.stale ?? false}
+                    onSaved={(review) => handleReviewSaved(event, review)}
+                  />
+                </article>
               ))}
             </div>
           </div>
@@ -249,6 +376,12 @@ export default function ResultsScreen({
 
     </div>
   )
+}
+
+function labelsFor(label: EventReview['label']): string {
+  if (label === 'provided') return 'Food provided'
+  if (label === 'not_provided') return 'No food provided'
+  return 'Still uncertain'
 }
 
 function getEventImageSrc(event: ScrapedEvent): string | null {

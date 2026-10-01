@@ -23,6 +23,11 @@ export const IPC = {
   CACHE_INFO: 'cache:info',
   CACHE_GET: 'cache:get',
 
+  // Food reviews
+  REVIEWS_GET_FOR_SCAN: 'reviews:getForScan',
+  REVIEWS_SAVE: 'reviews:save',
+  REVIEWS_EXPORT: 'reviews:export',
+
   // App
   APP_INFO: 'app:info',
 

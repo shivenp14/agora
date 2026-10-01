@@ -10,6 +10,8 @@ export function useScan() {
   const [events, setEvents] = useState<ScrapedEvent[]>([]);
   const [foodEvents, setFoodEvents] = useState<ScrapedEvent[]>([]);
   const [fromCache, setFromCache] = useState(false);
+  const [scanDate, setScanDate] = useState('');
+  const [captureTimestamp, setCaptureTimestamp] = useState(0);
 
   useEffect(() => {
     const detachProgress = window.api.onScanProgress((data) => {
@@ -26,6 +28,8 @@ export function useScan() {
       setEvents(data.events as ScrapedEvent[]);
       setFoodEvents(data.foodEvents as ScrapedEvent[]);
       setFromCache(data.fromCache ?? false);
+      setScanDate(data.date);
+      setCaptureTimestamp(data.captureTimestamp ?? 0);
       setState('done');
     });
 
@@ -57,6 +61,8 @@ export function useScan() {
     setEvents([]);
     setFoodEvents([]);
     setFromCache(false);
+    setScanDate('');
+    setCaptureTimestamp(0);
   }, []);
 
   const reset = useCallback(() => {
@@ -66,6 +72,8 @@ export function useScan() {
     setEvents([]);
     setFoodEvents([]);
     setFromCache(false);
+    setScanDate('');
+    setCaptureTimestamp(0);
   }, []);
 
   const hydrateResult = useCallback((data: ScanResult) => {
@@ -75,7 +83,9 @@ export function useScan() {
     setEvents(data.events);
     setFoodEvents(data.foodEvents);
     setFromCache(data.fromCache);
+    setScanDate(data.date);
+    setCaptureTimestamp(data.captureTimestamp);
   }, []);
 
-  return { state, progress, error, events, foodEvents, fromCache, startScan, cancelScan, reset, hydrateResult };
+  return { state, progress, error, events, foodEvents, fromCache, scanDate, captureTimestamp, startScan, cancelScan, reset, hydrateResult };
 }

@@ -9,7 +9,7 @@ const OCR_WORKER_COUNT = 2;
 const OCR_CACHE_DIR = path.join(process.env.TEMP || '/tmp', 'ducklink-food-finder-images', 'ocr-cache');
 const OCR_VARIANTS_DIR = path.join(OCR_CACHE_DIR, 'variants');
 const UPSCALE_TARGET_WIDTH = 2400;
-const OCR_CACHE_VERSION = 'v2';
+const OCR_CACHE_VERSION = 'v3';
 
 let workers: Worker[] = [];
 let workerInitPromise: Promise<Worker[]> | null = null;
@@ -66,9 +66,8 @@ function getOcrCachePath(imageHash: string): string {
   return path.join(OCR_CACHE_DIR, `${OCR_CACHE_VERSION}-${imageHash}.txt`);
 }
 
-function readCachedText(imagePath: string): string | null {
+function readCachedText(imagePath: string, imageHash: string | null): string | null {
   ensureOcrCacheDir();
-  const imageHash = getImageHash(imagePath);
   if (!imageHash) return null;
 
   const cachePath = getOcrCachePath(imageHash);
@@ -84,11 +83,10 @@ function readCachedText(imagePath: string): string | null {
   }
 }
 
-function writeCachedText(imagePath: string, text: string): void {
+function writeCachedText(imagePath: string, text: string, imageHash: string | null): void {
   if (!text) return;
 
   ensureOcrCacheDir();
-  const imageHash = getImageHash(imagePath);
   if (!imageHash) return;
 
   try {
@@ -98,12 +96,12 @@ function writeCachedText(imagePath: string, text: string): void {
   }
 }
 
-export async function recognizeText(imagePath: string, worker: Worker): Promise<string> {
-  const cached = readCachedText(imagePath);
+export async function recognizeText(imagePath: string, worker: Worker, imageHash = getImageHash(imagePath)): Promise<string> {
+  const cached = readCachedText(imagePath, imageHash);
   if (cached !== null) return cached;
 
   try {
-    const variants = createRecognitionVariants(imagePath);
+    const variants = createRecognitionVariants(imagePath, imageHash);
     const passes: string[] = [];
 
     for (const variant of variants) {
@@ -120,7 +118,7 @@ export async function recognizeText(imagePath: string, worker: Worker): Promise<
     }
 
     const cleaned = mergeRecognizedText(passes);
-    writeCachedText(imagePath, cleaned);
+    writeCachedText(imagePath, cleaned, imageHash);
     logger.debug(`OCR result for ${imagePath}: ${cleaned.length} chars across ${variants.length} pass(es)`);
     return cleaned;
   } catch (error) {
@@ -160,20 +158,37 @@ export interface EventWithOCR {
 export type OCRProgressCallback = (current: number, total: number, eventName: string) => void;
 
 export async function processAllImages(
-  events: Array<{ id: string; name: string; localImagePath: string | null }>,
+  events: Array<{ id: string; name: string; localImagePath?: string | null; localImagePaths?: string[] }>,
   onProgress?: OCRProgressCallback
 ): Promise<Map<string, string>> {
   const results = new Map<string, string>();
-  const eventsWithImages = events.filter((e) => e.localImagePath);
+  const eventsWithImages = events.map((event) => ({
+    ...event,
+    paths: uniquePaths(event.localImagePaths?.length ? event.localImagePaths : [event.localImagePath || '']),
+  })).filter((event) => event.paths.length > 0);
 
   if (eventsWithImages.length === 0) {
     logger.info('No images to OCR');
     return results;
   }
 
-  logger.info(`Running OCR on ${eventsWithImages.length} images`);
+  logger.info(`Running OCR on ${eventsWithImages.reduce((count, event) => count + event.paths.length, 0)} images across ${eventsWithImages.length} events`);
 
-  const workerPool = await initWorkers();
+  let workerPool: Worker[];
+  try {
+    workerPool = await initWorkers();
+  } catch (error) {
+    logger.warn(`OCR worker initialization failed: ${(error as Error).message}`);
+    return results;
+  }
+  const hashByPath = new Map<string, string>();
+  for (const event of eventsWithImages) {
+    for (const imagePath of event.paths) {
+      const imageHash = getImageHash(imagePath);
+      if (imageHash) hashByPath.set(imagePath, imageHash);
+    }
+  }
+  const recognitionByHash = new Map<string, Promise<string>>();
   let nextIndex = 0;
   let completed = 0;
 
@@ -183,10 +198,22 @@ export async function processAllImages(
         const event = eventsWithImages[nextIndex];
         nextIndex += 1;
 
-        const text = await recognizeText(event.localImagePath!, worker);
-        if (text) {
-          results.set(event.id, text);
+        const imageTexts: string[] = [];
+        const eventHashes = new Set<string>();
+        for (const imagePath of event.paths) {
+          const imageHash = hashByPath.get(imagePath);
+          if (!imageHash || eventHashes.has(imageHash)) continue;
+          eventHashes.add(imageHash);
+          let recognition = recognitionByHash.get(imageHash);
+          if (!recognition) {
+            recognition = recognizeText(imagePath, worker, imageHash);
+            recognitionByHash.set(imageHash, recognition);
+          }
+          const text = await recognition;
+          if (text) imageTexts.push(text);
         }
+        const combinedText = mergeRecognizedText(imageTexts);
+        if (combinedText) results.set(event.id, combinedText);
 
         completed += 1;
         onProgress?.(completed, eventsWithImages.length, event.name);
@@ -200,6 +227,15 @@ export async function processAllImages(
 
   logger.info(`OCR complete: ${results.size}/${eventsWithImages.length} images produced text`);
   return results;
+}
+
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  return paths.filter((imagePath) => {
+    if (!imagePath || seen.has(imagePath)) return false;
+    seen.add(imagePath);
+    return true;
+  });
 }
 
 export function clearOcrCache(): void {
@@ -227,7 +263,7 @@ interface RecognitionVariant {
   psm: PSM;
 }
 
-function createRecognitionVariants(imagePath: string): RecognitionVariant[] {
+function createRecognitionVariants(imagePath: string, imageHash: string | null): RecognitionVariant[] {
   ensureOcrCacheDir();
 
   const variants: RecognitionVariant[] = [
@@ -243,7 +279,7 @@ function createRecognitionVariants(imagePath: string): RecognitionVariant[] {
     },
   ];
 
-  const upscaledPath = createUpscaledVariant(imagePath);
+  const upscaledPath = createUpscaledVariant(imagePath, imageHash);
   if (upscaledPath) {
     variants.push({
       path: upscaledPath,
@@ -255,8 +291,7 @@ function createRecognitionVariants(imagePath: string): RecognitionVariant[] {
   return variants;
 }
 
-function createUpscaledVariant(imagePath: string): string | null {
-  const imageHash = getImageHash(imagePath);
+function createUpscaledVariant(imagePath: string, imageHash: string | null): string | null {
   if (!imageHash) return null;
 
   const variantPath = path.join(OCR_VARIANTS_DIR, `${imageHash}-upscaled.png`);

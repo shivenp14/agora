@@ -1,7 +1,7 @@
 import { loadApiKeyFromKeychain, hasApiKey } from './services/keytarStore';
 import { classifyBatchWithRetry, JEV_MODEL, type FoodStatus } from './services/llm';
 
-// Small diagnostic set, not a substitute for reviewing real event listings.
+// Synthetic diagnostic set only. For saved real-event reviews, use `npm run eval:reviews`.
 const CASES: Array<{ title: string; description: string; imageText: string; expected: FoodStatus }> = [
   { title: 'Club meeting', description: 'Free pizza and drinks provided.', imageText: '', expected: 'provided' },
   { title: 'Career fair', description: 'Free admission for all students.', imageText: '', expected: 'not_provided' },

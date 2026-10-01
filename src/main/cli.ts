@@ -1,7 +1,7 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright-core';
 import { scrapeEvents, ScrapedEvent } from './services/scraper';
 import { downloadAllImagesCli } from './services/imageDownloaderCli';
-import { processAllImages, combineTextForLLM } from './services/ocr';
+import { processAllImages, combineTextForLLM, terminateWorker } from './services/ocr';
 import { detectFood, sortEventsByFood } from './services/foodDetector';
 import { hasApiKey, loadApiKeyFromKeychain } from './services/keytarStore';
 import { saveCache } from './services/cacheCli';
@@ -111,13 +111,17 @@ async function runScan(): Promise<ScrapedEvent[]> {
 
   events = events.map((e) => ({
     ...e,
-    localImagePath: imagePaths.get(e.id) || null,
+    localImagePath: imagePaths.get(e.id)?.[0]?.path || null,
+    localImagePaths: imagePaths.get(e.id)?.map((image) => image.path) || [],
+    imageEvidence: imagePaths.get(e.id)?.map(({ url, source, sha256 }) => ({ url, source, sha256 })) || [],
     localImageDataUrl: null,
   }));
   console.log('');
 
   console.log('--- Running OCR ---');
   const ocrTexts = await processAllImages(events);
+  await terminateWorker();
+  events.forEach((event) => { delete event.localImagePaths; });
 
   events = events.map((event) => {
     const ocrText = ocrTexts.get(event.id) || '';

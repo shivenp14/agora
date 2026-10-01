@@ -1,6 +1,7 @@
 import { Page } from 'playwright-core';
 import { logger } from '../utils/logger';
 import { getLocalDateKey } from '../../shared/date';
+import { chooseLargestSrcset, DiscoveredImageCandidate, ImageCandidate, selectImageCandidates } from './imageCandidates';
 
 const EVENT_LIST_SELECTOR = '#divAllItems li.list-group-item';
 const DETAIL_FETCH_CONCURRENCY = 3;
@@ -15,6 +16,9 @@ export interface ScrapedEvent {
   location: string;
   description: string;
   imageUrl: string | null;
+  imageCandidates?: ImageCandidate[];
+  imageEvidence?: Array<ImageCandidate & { sha256: string }>;
+  localImagePaths?: string[];
   sourceUrl: string;
   localImagePath: string | null;
   localImageDataUrl: string | null;
@@ -373,9 +377,52 @@ async function fetchEventDetails(page: Page, event: ScrapedEvent): Promise<Scrap
       const metaDesc = document.querySelector('meta[name="description"]');
       const description = clean(metaDesc ? metaDesc.getAttribute('content') || '' : '');
       const ogImage = document.querySelector('meta[property="og:image"]');
-      const imageUrl = ogImage ? ogImage.getAttribute('content') || '' : '';
+      const ogImageValue = ogImage ? ogImage.getAttribute('content') || '' : '';
+      const imageUrl = ogImageValue ? new URL(ogImageValue, document.baseURI).href : '';
       const titleHeading = clean(document.querySelector('.rsvp__event-name')?.textContent);
       const title = titleHeading || clean(document.title.replace(/ - .*$/, ''));
+      const discoveredImages: Array<{
+        url: string;
+        source: 'detail' | 'original' | 'srcset' | 'link';
+        alt?: string;
+        context?: string;
+        width?: number;
+        height?: number;
+      }> = [];
+      const imageSrcsets: Array<{ srcset: string; alt: string; context: string; width?: number; height?: number }> = [];
+      const addImage = (url: string | null | undefined, source: 'detail' | 'original' | 'srcset' | 'link', image?: HTMLImageElement) => {
+        if (!url) return;
+        discoveredImages.push({
+          url: new URL(url, document.baseURI).href,
+          source,
+          alt: image?.getAttribute('alt') || '',
+          context: image?.parentElement?.parentElement?.textContent?.slice(0, 500) || '',
+          width: image?.naturalWidth || image?.width,
+          height: image?.naturalHeight || image?.height,
+        });
+      };
+
+      for (const image of Array.from(document.querySelectorAll('img'))) {
+        if (image.closest('header, nav, footer')) continue;
+        const originalUrl = image.getAttribute('data-original') || image.getAttribute('data-original-src') ||
+          image.getAttribute('data-full');
+        addImage(originalUrl, 'original', image);
+        addImage(image.currentSrc || image.getAttribute('data-src') || image.getAttribute('src'), 'detail', image);
+        const srcset = image.getAttribute('srcset') || image.getAttribute('data-srcset');
+        if (srcset) {
+          imageSrcsets.push({
+            srcset,
+            alt: image.getAttribute('alt') || '',
+            context: image.parentElement?.parentElement?.textContent?.slice(0, 500) || '',
+            width: image.naturalWidth || image.width,
+            height: image.naturalHeight || image.height,
+          });
+        }
+        const linked = image.closest('a[href]') as HTMLAnchorElement | null;
+        if (linked && (/\.(?:jpe?g|png|gif|webp)(?:[?#]|$)/i.test(linked.href) || /(?:image|flyer|upload|download|original)/i.test(linked.href))) {
+          addImage(linked.href, 'link', image);
+        }
+      }
 
       const cardBlocks = Array.from(document.querySelectorAll('.card-block'));
       const detailsBlock = cardBlocks.find((block) => block.querySelector('.mdi-note-text'));
@@ -399,13 +446,23 @@ async function fetchEventDetails(page: Page, event: ScrapedEvent): Promise<Scrap
         ...flyerAltTexts,
       ]).join('\n');
 
-      return { description: mergedDescription, imageUrl, title };
+      return { description: mergedDescription, imageUrl, title, discoveredImages, imageSrcsets };
     });
+
+    const srcsetCandidates: DiscoveredImageCandidate[] = details.imageSrcsets.flatMap((image) => {
+      const url = chooseLargestSrcset(image.srcset);
+      return url ? [{ url: new URL(url, event.sourceUrl).href, source: 'srcset', alt: image.alt, context: image.context, width: image.width, height: image.height }] : [];
+    });
+    const imageCandidates = selectImageCandidates(
+      [...details.discoveredImages, ...srcsetCandidates],
+      details.imageUrl || event.imageUrl || ''
+    );
 
     return {
       ...event,
       description: details.description || event.description,
-      imageUrl: details.imageUrl && details.imageUrl.includes('/upload/') ? details.imageUrl : event.imageUrl,
+      imageUrl: imageCandidates[0]?.url || null,
+      imageCandidates,
       name: details.title || event.name,
     };
   } catch (err) {

@@ -28,6 +28,10 @@ export async function detectFood<T extends { id: string; name: string; descripti
 
   const batches = chunkEvents(events, BATCH_SIZE);
   const results: (T & FoodFields)[] = new Array(events.length);
+  const originalIndexById = new Map<string, number>();
+  events.forEach((event, index) => {
+    if (!originalIndexById.has(event.id)) originalIndexById.set(event.id, index);
+  });
 
   logger.info(`Classifying ${events.length} events in ${batches.length} batches with ${CONCURRENT_BATCHES} concurrent`);
 
@@ -75,8 +79,8 @@ export async function detectFood<T extends { id: string; name: string; descripti
 
       const batchResults = await processBatch(batch, batchIdx);
       for (const result of batchResults) {
-        const originalIndex = events.findIndex((e) => e.id === result.id);
-        if (originalIndex !== -1) {
+        const originalIndex = originalIndexById.get(result.id);
+        if (originalIndex !== undefined) {
           results[originalIndex] = result;
         }
       }

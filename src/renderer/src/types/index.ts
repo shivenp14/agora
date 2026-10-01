@@ -21,6 +21,8 @@ export interface ScrapedEvent {
   location: string
   description: string
   imageUrl: string | null
+  imageCandidates?: ImageCandidate[]
+  imageEvidence?: ImageEvidence[]
   localImagePath: string | null
   localImageDataUrl: string | null
   ocrText: string
@@ -32,8 +34,20 @@ export interface ScrapedEvent {
   sourceUrl: string
 }
 
+export type ImageCandidateSource = 'detail' | 'original' | 'srcset' | 'link' | 'banner'
+
+export interface ImageCandidate {
+  url: string
+  source: ImageCandidateSource
+}
+
+export interface ImageEvidence extends ImageCandidate {
+  sha256: string
+}
+
 export interface ScanResult {
   date: string
+  captureTimestamp: number
   events: ScrapedEvent[]
   foodEvents: ScrapedEvent[]
   scanDuration: number

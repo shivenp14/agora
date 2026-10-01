@@ -24,7 +24,8 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:mac:publish": "npm run build && electron-builder --mac --publish always",
     "cli": "npx tsx src/main/cli.ts",
-    "bench": "npx tsx src/main/benchModels.ts"
+    "bench": "npx tsx src/main/benchModels.ts",
+    "eval:reviews": "node --import tsx src/main/evaluateReviews.ts"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

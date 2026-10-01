@@ -59,14 +59,20 @@ Jev uses `POST https://api.typesafe.ai/v1/systemone` and is pinned to `jev-1.13.
 - `npm run build` - Build the main and renderer bundles
 - `npm run preview` - Preview the production build
 - `npm run lint` - Run ESLint
-- `npm test` - Check the Jev request adapter, response validation, and error handling without credentials or network calls
+- `npm test` - Check classification, flyer/OCR processing, review persistence, and real-event evaluation without credentials or network calls
 - `npm run typecheck` - Run TypeScript checks for main and renderer
 - `npm run pack` - Build and create an unpacked desktop app
 - `npm run dist` - Build and create distributable packages
 - `npm run dist:mac` - Build the macOS release artifacts locally
 - `npm run dist:mac:publish` - Build and publish the macOS release to GitHub Releases
 - `npm run cli` - Run the CLI entry point
-- `npm run bench` - Run Jev against 12 labeled diagnostic cases using the saved TypeSafe key
+- `npm run bench` - Run Jev against 12 synthetic diagnostic cases using the saved TypeSafe key; this is not a real-event accuracy estimate
+- `npm run eval:reviews -- <export.json>` - Replay recorded model decisions against manually reviewed real-event labels without API calls
+- `npm run eval:reviews -- <export.json> --rerun` - Reclassify frozen captured descriptions and OCR with Jev (uses the saved TypeSafe key and makes API requests)
+
+Real-event reviews are exported from the results screen with **Export review dataset** and evaluated separately from the synthetic benchmark. Review labels identify whether the judgment is based on captured listing evidence, organizer confirmation, or attendance. Unlabeled records stay in the unresolved count; an `uncertain` label is retained as a reviewed judgment and reported separately. Evaluation reports denominators, uncertainty, mismatches, and separate agreement for captured-evidence versus externally confirmed labels. It describes only the exported sample and must not be presented as general production accuracy. See [real-event evaluation practices](docs/REAL_EVENT_EVALUATION.md) for the capture limits and review process.
+
+Results marked uncertain or food-provided below 50% confidence appear in **Needs confirmation**. Every event has a **Manual food review** disclosure with captured evidence and saved labels; these labels preserve Jev's original result. If a rescan changes the evidence, the old review is marked stale and the current snapshot exports as unresolved until reviewed again. Flyer capture now prioritizes detail-page originals and combines OCR from multiple relevant images, with banner fallback when a full flyer is unavailable.
 
 ## App Flow
 

@@ -6,12 +6,15 @@ import { getLocalDateKey } from '../../shared/date';
 
 interface CacheData {
   classifierVersion: string;
+  imagePipelineVersion: string;
   date: string;
   timestamp: number;
   events: unknown[];
   foodEvents: unknown[];
   scanDurationMs: number;
 }
+
+const IMAGE_PIPELINE_VERSION = '2';
 
 interface CachedEventWithImage {
   localImagePath?: string | null;
@@ -26,7 +29,7 @@ function loadCache(): CacheData | null {
     if (!fs.existsSync(CACHE_PATH)) return null;
     const data = fs.readFileSync(CACHE_PATH, 'utf-8');
     const parsed = JSON.parse(data) as CacheData;
-    if (parsed.classifierVersion !== CLASSIFIER_VERSION) return null;
+    if (parsed.classifierVersion !== CLASSIFIER_VERSION || parsed.imagePipelineVersion !== IMAGE_PIPELINE_VERSION) return null;
     return {
       ...parsed,
       events: sanitizeCachedEvents(parsed.events),
@@ -93,6 +96,7 @@ export function saveCache(
 
   const data: CacheData = {
     classifierVersion: CLASSIFIER_VERSION,
+    imagePipelineVersion: IMAGE_PIPELINE_VERSION,
     date: today,
     timestamp: Date.now(),
     events,

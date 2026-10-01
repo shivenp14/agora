@@ -88,10 +88,10 @@ export default function EventCard({ event, showFoodBadge = false }: Props) {
             {showFoodBadge && event.foodReasoning && (
               <div className="bg-orange-500/10 rounded-lg p-3">
                 <h4 className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-1">
-                  Why food?
+                  Jev's food result
                 </h4>
                 <p className="text-sm text-orange-300/80 italic">
-                  {event.foodReasoning}
+                  {event.foodReasoning}{(event.foodConfidence ?? 0) < 0.5 ? ' Check the listing before relying on this result.' : ''}
                 </p>
               </div>
             )}

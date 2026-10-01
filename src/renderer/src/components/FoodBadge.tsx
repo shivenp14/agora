@@ -3,10 +3,9 @@ interface Props {
   confidence?: number
 }
 
-function getCertaintyLabel(confidence: number): string {
-  if (confidence >= 0.8) return 'High Certainty'
-  if (confidence >= 0.5) return 'Medium Certainty'
-  return 'Low Certainty'
+function getFoodLabel(confidence: number): string {
+  if (confidence < 0.5) return 'Needs confirmation'
+  return 'Food reported'
 }
 
 export default function FoodBadge({ size = 'md', confidence = 0 }: Props) {
@@ -17,8 +16,8 @@ export default function FoodBadge({ size = 'md', confidence = 0 }: Props) {
     <span
       className={`inline-flex items-center gap-1.5 ${sizeClasses} bg-orange-500/20 text-orange-400 font-medium rounded-full`}
     >
-      <span>🍕</span>
-      <span>{getCertaintyLabel(confidence)}</span>
+      <span className="material-symbols-outlined text-[1em]" aria-hidden="true">restaurant</span>
+      <span>{getFoodLabel(confidence)}</span>
     </span>
   )
 }
