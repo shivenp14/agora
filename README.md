@@ -164,6 +164,12 @@ Testing flow:
 Auto-updates remain intentionally disabled in `npm run dev`.
 Unpacked local builds created with `npm run pack` also disable updates when release updater metadata is absent. Build with `npm run dist:mac` to include that configuration.
 
+### Keeping the local installation current
+
+After changing the app, update the installed copy in `/Applications/Ducklink Food Finder.app` as well as the repository build. Bump the patch version with `npm version patch --no-git-tag-version`, then create a local macOS build with `npm run dist:mac -- --publish never`. Quit the running app, replace its installed bundle with the app from the build's macOS output directory, and relaunch it. Preserve the app's user-data directory and verify the installed version and bundled code match the new build. Local installation does not publish a GitHub release.
+
+From an automation shell, relaunch with `env -u ELECTRON_RUN_AS_NODE open -a '/Applications/Ducklink Food Finder.app'` to prevent an inherited Electron-as-Node flag from immediately exiting the app.
+
 ## License
 
 MIT

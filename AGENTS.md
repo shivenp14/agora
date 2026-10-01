@@ -14,6 +14,16 @@
   - `npm run lint`
 - When changing packaging, updater, preload, or IPC code, make sure both main-process and renderer changes stay in sync.
 
+## Keep The Installed App Current
+
+- After making changes, rebuild and install the current workspace code into `/Applications/Ducklink Food Finder.app` before finishing the task.
+- Package locally with publishing disabled, then gracefully quit the running app, replace the installed app bundle, and relaunch it.
+- When relaunching from an automation shell, unset `ELECTRON_RUN_AS_NODE` so the app starts in Electron mode, for example: `env -u ELECTRON_RUN_AS_NODE open -a '/Applications/Ducklink Food Finder.app'`.
+- Preserve the app's user data, saved credentials, reviews, and browser sessions during installation.
+- Verify the installed version, bundled code, and running executable match the new local build. A repository build or development server alone does not update the installed app.
+- Treat local rebuilding, installation, and restart as part of the user's requested changes. Publish a GitHub release only when explicitly requested.
+- If installation is blocked, explain the concrete blocker instead of reporting the installed app as updated.
+
 ## Updater And Release Workflow
 
 - The app uses `electron-updater`.
